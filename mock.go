@@ -5,6 +5,7 @@ import (
 	"io"
 	"io/ioutil"
 	"sync"
+	"syscall"
 
 	"github.com/reconquest/nopio-go"
 )
@@ -192,4 +193,8 @@ func (worker *MockRunnerWorker) error() error {
 	}
 
 	return worker.Error
+}
+
+func (worker *MockRunnerWorker) Signal(signal syscall.Signal) error {
+	return nil
 }

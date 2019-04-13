@@ -7,12 +7,27 @@ import (
 	"net"
 	"os"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/reconquest/ser-go"
 
 	"golang.org/x/crypto/ssh"
 )
+
+var sshSignals = map[os.Signal]ssh.Signal{
+	syscall.Signal(1):  ssh.SIGHUP,
+	syscall.Signal(2):  ssh.SIGINT,
+	syscall.Signal(3):  ssh.SIGQUIT,
+	syscall.Signal(4):  ssh.SIGILL,
+	syscall.Signal(6):  ssh.SIGABRT,
+	syscall.Signal(8):  ssh.SIGFPE,
+	syscall.Signal(9):  ssh.SIGKILL,
+	syscall.Signal(11): ssh.SIGSEGV,
+	syscall.Signal(13): ssh.SIGPIPE,
+	syscall.Signal(14): ssh.SIGALRM,
+	syscall.Signal(15): ssh.SIGTERM,
+}
 
 // RemoteCmd is implementation of CmdWorker interface for remote commands
 type RemoteCmd struct {
@@ -377,6 +392,17 @@ func (cmd *RemoteCmd) initTimeouts() {
 	}
 	cmd.connection.readTimeout = cmd.timeouts.SendTimeout
 	cmd.connection.writeTimeout = cmd.timeouts.ReceiveTimeout
+}
+
+// Signal sends specified ssh represnetation of os signal into existing ssh
+// session
+func (cmd *RemoteCmd) Signal(signal syscall.Signal) error {
+	sshSignal, ok := sshSignals[signal]
+	if !ok {
+		return errors.New("unexpected ssh signal")
+	}
+
+	return cmd.session.Signal(sshSignal)
 }
 
 func escapeCommandArgumentStrict(argument string) string {

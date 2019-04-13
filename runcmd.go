@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"syscall"
 
 	"github.com/reconquest/ser-go"
 )
@@ -34,6 +35,7 @@ type CmdWorker interface {
 	SetStdin(io.Reader)
 	GetArgs() []string
 	CmdError() error
+	Signal(syscall.Signal) error
 }
 
 func (err ExecError) Error() string {

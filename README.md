@@ -2,11 +2,11 @@
 
 runcmd golang package helps you run shell commands on local or remote hosts
 
-http://godoc.org/github.com/theairkit/runcmd
+http://godoc.org/github.com/reconquest/runcmd
 
 Installation:
 ```bash
-go get github.com/theairkit/runcmd
+go get github.com/reconquest/runcmd
 ```
 
 ### Description and examples:

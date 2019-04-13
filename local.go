@@ -3,6 +3,7 @@ package runcmd
 import (
 	"io"
 	"os/exec"
+	"syscall"
 )
 
 // LocalCmd is implementation of CmdWorker interface for local commands
@@ -82,4 +83,9 @@ func (cmd *LocalCmd) SetStdin(reader io.Reader) {
 // GetArgs returns cmdline for current worker
 func (cmd *LocalCmd) GetArgs() []string {
 	return cmd.cmd.Args
+}
+
+// Signal sends a signal to the Process.
+func (cmd *LocalCmd) Signal(signal syscall.Signal) error {
+	return cmd.cmd.Process.Signal(signal)
 }
