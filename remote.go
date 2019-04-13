@@ -10,8 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/reconquest/ser-go"
-
+	"github.com/reconquest/karma-go"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -274,7 +273,7 @@ func NewRemotePassAuthRunner(user, host, password string) (*Remote, error) {
 func (remote *Remote) Command(name string, arg ...string) CmdWorker {
 	session, err := remote.client.NewSession()
 	if err != nil {
-		err = ser.Errorf(
+		err = karma.Format(
 			err, "can't create ssh session",
 		)
 	}
@@ -330,7 +329,7 @@ func (cmd *RemoteCmd) Wait() (err error) {
 		closeErr := cmd.session.Close()
 		if err == nil && closeErr != nil {
 			if closeErr.Error() != "EOF" {
-				err = ser.Errorf(
+				err = karma.Format(
 					err, "can't close ssh session",
 				)
 			}

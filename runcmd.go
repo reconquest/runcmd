@@ -6,7 +6,7 @@ import (
 	"io"
 	"syscall"
 
-	"github.com/reconquest/ser-go"
+	"github.com/reconquest/karma-go"
 )
 
 // ExecError represents error messages occured while executing command.
@@ -53,7 +53,7 @@ func (err ExecError) Error() string {
 func run(worker CmdWorker) error {
 	err := worker.Start()
 	if err != nil {
-		return ser.Errorf(
+		return karma.Format(
 			err, "can't exec %q", worker.GetArgs(),
 		)
 	}
