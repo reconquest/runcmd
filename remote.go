@@ -3,7 +3,6 @@ package runcmd
 import (
 	"errors"
 	"io"
-	"io/ioutil"
 	"net"
 	"os"
 	"strings"
@@ -35,22 +34,22 @@ type RemoteCmd struct {
 	sessionError error
 	connection   *timeBoundedConnection
 	client       *ssh.Client
-	timeouts     *Timeouts
+	timeout      *Timeout
 }
 
 // Remote is implementation of Runner interface for remote commands
 type Remote struct {
 	client     *ssh.Client
 	connection *timeBoundedConnection
-	timeouts   *Timeouts
+	timeout    *Timeout
 }
 
-// Timeouts is struct for setting various timeouts for ssh connection
-type Timeouts struct {
-	ConnectionTimeout time.Duration
-	SendTimeout       time.Duration
-	ReceiveTimeout    time.Duration
-	KeepAlive         time.Duration
+// Timeout is struct for setting various timeout for ssh connection
+type Timeout struct {
+	Connection time.Duration
+	Send       time.Duration
+	Receive    time.Duration
+	KeepAlive  time.Duration
 }
 
 type timeBoundedConnection struct {
@@ -85,29 +84,55 @@ func (connection *timeBoundedConnection) Write(p []byte) (int, error) {
 	return connection.Conn.Write(p)
 }
 
-// NewRemoteRawKeyAuthRunnerWithTimeouts is same, as NewRemoteKeyAuthRunnerWithTimeouts,
-// but key should be raw byte sequence instead of path.
-func NewRemoteRawKeyAuthRunnerWithTimeouts(
-	user, host, key string, timeouts Timeouts,
+func NewRemoteRawKeyAuthRunner(
+	user, host, key string, timeout Timeout,
 ) (*Remote, error) {
 	signer, err := ssh.ParsePrivateKey([]byte(key))
 	if err != nil {
-		return nil, errors.New("can't parse PEM data: " + err.Error())
+		return nil, karma.Format(
+			err,
+			"unable to parse private ssh key",
+		)
 	}
 
+	return NewRemoteRunner(
+		user,
+		host,
+		[]ssh.AuthMethod{ssh.PublicKeys(signer)},
+		timeout,
+	)
+}
+
+func NewRemotePasswordAuthRunner(
+	user, host, password string,
+	timeout Timeout,
+) (*Remote, error) {
+	return NewRemoteRunner(
+		user,
+		host,
+		[]ssh.AuthMethod{ssh.Password(password)},
+		timeout,
+	)
+}
+
+func NewRemoteRunner(
+	user, host string,
+	auth []ssh.AuthMethod,
+	timeout Timeout,
+) (*Remote, error) {
 	config := &ssh.ClientConfig{
 		User:            user,
-		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
+		Auth:            auth,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
 
 	dialer := net.Dialer{
-		Timeout:   timeouts.ConnectionTimeout,
-		KeepAlive: timeouts.KeepAlive,
+		Timeout:   timeout.Connection,
+		KeepAlive: timeout.KeepAlive,
 	}
 
-	if timeouts.ConnectionTimeout != 0 {
-		dialer.Deadline = time.Now().Add(timeouts.ConnectionTimeout)
+	if timeout.Connection != 0 {
+		dialer.Deadline = time.Now().Add(timeout.Connection)
 	}
 
 	conn, err := dialer.Dial("tcp", host)
@@ -119,11 +144,11 @@ func NewRemoteRawKeyAuthRunnerWithTimeouts(
 		Conn: conn,
 	}
 
-	// We need to temporary switch on timeouts to prevent hanging
+	// We need to temporary switch on timeout to prevent hanging
 	// on IO operations if server is successfully connected by TCP
 	// but give no response.
-	connection.readTimeout = timeouts.SendTimeout
-	connection.writeTimeout = timeouts.ReceiveTimeout
+	connection.readTimeout = timeout.Send
+	connection.writeTimeout = timeout.Receive
 
 	sshConnection, channels, requests, err := ssh.NewClientConn(
 		connection, host, config,
@@ -138,134 +163,7 @@ func NewRemoteRawKeyAuthRunnerWithTimeouts(
 	return &Remote{
 		client:     ssh.NewClient(sshConnection, channels, requests),
 		connection: connection,
-		timeouts:   &timeouts,
-	}, nil
-}
-
-// NewRemoteKeyAuthRunnerWithTimeouts is one of functions for creating
-// remote runner. Use this one instead of NewRemoteKeyAuthRunner if you need to
-// setup nondefault timeouts for ssh connection
-func NewRemoteKeyAuthRunnerWithTimeouts(
-	user, host, key string, timeouts Timeouts,
-) (*Remote, error) {
-	if _, err := os.Stat(key); os.IsNotExist(err) {
-		return nil, err
-	}
-
-	pemBytes, err := ioutil.ReadFile(key)
-	if err != nil {
-		return nil, err
-	}
-
-	return NewRemoteRawKeyAuthRunnerWithTimeouts(
-		user, host, string(pemBytes), timeouts,
-	)
-}
-
-// NewRemotePassAuthRunnerWithTimeouts is one of functions for creating remote
-// runner. Use this one instead of NewRemotePassAuthRunner if you need to setup
-// nondefault timeouts for ssh connection
-func NewRemotePassAuthRunnerWithTimeouts(
-	user, host, password string, timeouts Timeouts,
-) (*Remote, error) {
-	config := &ssh.ClientConfig{
-		User:            user,
-		Auth:            []ssh.AuthMethod{ssh.Password(password)},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-	}
-
-	dialer := net.Dialer{
-		Timeout:   timeouts.ConnectionTimeout,
-		KeepAlive: timeouts.KeepAlive,
-	}
-
-	if timeouts.ConnectionTimeout != 0 {
-		dialer.Deadline = time.Now().Add(timeouts.ConnectionTimeout)
-	}
-
-	conn, err := dialer.Dial("tcp", host)
-	if err != nil {
-		return nil, err
-	}
-
-	connection := &timeBoundedConnection{
-		Conn: conn,
-	}
-
-	// We need to temporary switch on timeouts to prevent hanging
-	// on IO operations if server is successfully connected by TCP
-	// but give no response.
-	connection.readTimeout = timeouts.SendTimeout
-	connection.writeTimeout = timeouts.ReceiveTimeout
-
-	sshConnection, channels, requests, err := ssh.NewClientConn(
-		connection, host, config,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	connection.readTimeout = 0
-	connection.writeTimeout = 0
-
-	return &Remote{
-		client:     ssh.NewClient(sshConnection, channels, requests),
-		connection: connection,
-		timeouts:   &timeouts,
-	}, nil
-}
-
-// NewRemoteKeyAuthRunner is one of functions for creating remote runner
-func NewRemoteKeyAuthRunner(user, host, key string) (*Remote, error) {
-	if _, err := os.Stat(key); os.IsNotExist(err) {
-		return nil, err
-	}
-
-	pemBytes, err := ioutil.ReadFile(key)
-	if err != nil {
-		return nil, err
-	}
-
-	signer, err := ssh.ParsePrivateKey(pemBytes)
-	if err != nil {
-		return nil, err
-	}
-
-	config := &ssh.ClientConfig{
-		User:            user,
-		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-	}
-
-	server, err := ssh.Dial("tcp", host, config)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Remote{
-		client:     server,
-		connection: nil,
-		timeouts:   nil,
-	}, nil
-}
-
-// NewRemotePassAuthRunner is one of functions for creating remote runner
-func NewRemotePassAuthRunner(user, host, password string) (*Remote, error) {
-	config := &ssh.ClientConfig{
-		User:            user,
-		Auth:            []ssh.AuthMethod{ssh.Password(password)},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-	}
-
-	server, err := ssh.Dial("tcp", host, config)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Remote{
-		client:     server,
-		connection: nil,
-		timeouts:   nil,
+		timeout:    &timeout,
 	}, nil
 }
 
@@ -281,7 +179,7 @@ func (remote *Remote) Command(name string, arg ...string) CmdWorker {
 	return &RemoteCmd{
 		args:         append([]string{name}, arg...),
 		connection:   remote.connection,
-		timeouts:     remote.timeouts,
+		timeout:      remote.timeout,
 		client:       remote.client,
 		session:      session,
 		sessionError: err,
@@ -312,7 +210,7 @@ func (cmd *RemoteCmd) Start() error {
 		return cmd.sessionError
 	}
 
-	cmd.initTimeouts()
+	cmd.initTimeout()
 
 	args := []string{}
 	for _, arg := range cmd.args {
@@ -385,12 +283,12 @@ func (cmd *RemoteCmd) GetArgs() []string {
 	return cmd.args
 }
 
-func (cmd *RemoteCmd) initTimeouts() {
+func (cmd *RemoteCmd) initTimeout() {
 	if cmd.connection == nil {
 		return
 	}
-	cmd.connection.readTimeout = cmd.timeouts.SendTimeout
-	cmd.connection.writeTimeout = cmd.timeouts.ReceiveTimeout
+	cmd.connection.readTimeout = cmd.timeout.Send
+	cmd.connection.writeTimeout = cmd.timeout.Receive
 }
 
 // Signal sends specified ssh represnetation of os signal into existing ssh
