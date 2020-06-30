@@ -237,6 +237,11 @@ func (cmd *RemoteCmd) Wait() (err error) {
 	return cmd.session.Wait()
 }
 
+// GetSession returns current ssh session
+func (cmd *RemoteCmd) GetSession() *ssh.Session {
+	return cmd.session
+}
+
 // StdinPipe returns stdin of current worker
 func (cmd *RemoteCmd) StdinPipe() (io.WriteCloser, error) {
 	if cmd.sessionError != nil {
